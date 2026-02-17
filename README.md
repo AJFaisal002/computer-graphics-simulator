@@ -14,6 +14,23 @@ It is designed for:
 - Exam preparation
 - Interactive experimentation
 
+
+## 🧠 Educational Purpose
+
+This project demonstrates:
+
+- Rasterization techniques
+- Depth sorting
+- Visibility determination
+- Projection transformations
+- Filling algorithms
+
+It is suitable for:
+- Computer Graphics courses
+- Undergraduate projects
+- Practical lab demonstrations
+
+---
 ## 🚀 Implemented Algorithms
 
 ### 🔹 2D Algorithms
@@ -42,22 +59,6 @@ It is designed for:
 - Matplotlib
 
 
-## 🧠 Educational Purpose
-
-This project demonstrates:
-
-- Rasterization techniques
-- Depth sorting
-- Visibility determination
-- Projection transformations
-- Filling algorithms
-
-It is suitable for:
-- Computer Graphics courses
-- Undergraduate projects
-- Practical lab demonstrations
-
----
 
 ## ▶️ Run Locally
 
@@ -73,4 +74,5 @@ Developed for academic and learning purposes.
 ## ⭐ Live Demo
 
 👉 https://graphics02.streamlit.app/
+
 
