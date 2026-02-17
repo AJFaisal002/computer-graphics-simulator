@@ -3,9 +3,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from collections import deque
 from algorithms import *
-# ==========================================================
+
 # ===================== ALGORITHMS =========================
-# ==========================================================
 
 def dda_line(x0, y0, x1, y1):
     points = []
