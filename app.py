@@ -209,16 +209,38 @@ algorithm = st.sidebar.selectbox(
 # ================= INPUT CONTROLS =================
 
 if algorithm in ["DDA Line", "Bresenham Line"]:
-    x0 = st.sidebar.number_input("x0", value=2)
-    y0 = st.sidebar.number_input("y0", value=3)
-    x1 = st.sidebar.number_input("x1", value=20)
-    y1 = st.sidebar.number_input("y1", value=15)
+
+    st.sidebar.subheader("Line Points")
+
+    col1, col2 = st.sidebar.columns(2)
+    with col1:
+        x0 = st.number_input("x0", value=2)
+    with col2:
+        y0 = st.number_input("y0", value=3)
+
+    col3, col4 = st.sidebar.columns(2)
+    with col3:
+        x1 = st.number_input("x1", value=20)
+    with col4:
+        y1 = st.number_input("y1", value=15)
+
     
 
 elif algorithm == "Midpoint Circle":
-    xc = st.sidebar.number_input("Center X", value=0)
-    yc = st.sidebar.number_input("Center Y", value=0)
-    r  = st.sidebar.number_input("Radius", min_value=1, value=20)
+
+    st.sidebar.subheader("Circle Parameters")
+
+    col1, col2, col3 = st.sidebar.columns(3)
+
+    with col1:
+        xc = st.number_input("Center X", value=0)
+
+    with col2:
+        yc = st.number_input("Center Y", value=0)
+
+    with col3:
+        r = st.number_input("Radius", min_value=1, value=20)
+
 
 elif algorithm in ["Scan-Line Fill","Boundary Fill","Flood Fill"]:
 
@@ -240,9 +262,24 @@ elif algorithm in ["Scan-Line Fill","Boundary Fill","Flood Fill"]:
             dx = int(150 + 80*np.cos(angle))
             dy = int(150 + 80*np.sin(angle))
 
-        x = st.sidebar.number_input(f"x{i+1}", value=dx, key=f"x{i}")
-        y = st.sidebar.number_input(f"y{i+1}", value=dy, key=f"y{i}")
+        col1, col2 = st.sidebar.columns(2)
+
+        with col1:
+            x = st.number_input(
+                f"x{i+1}",
+                value=dx,
+                key=f"x{i}"
+            )
+
+        with col2:
+            y = st.number_input(
+                f"y{i+1}",
+                value=dy,
+                key=f"y{i}"
+            )
+
         vertices.append((int(x), int(y)))
+
 
     seed_x = int(sum(v[0] for v in vertices)/len(vertices))
     seed_y = int(sum(v[1] for v in vertices)/len(vertices))
@@ -344,25 +381,74 @@ if draw:
             cube = painters_algorithm(cube)
         elif algorithm == "Z-Buffer":
 
-            cube = [rotate_y(p, angle) for p in cube]
+            # 6-face solid cube (12 triangles)
+            cube = [
 
+                # Front
+                [(0,0,0),(size,0,0),(size,size,0)],
+                [(0,0,0),(size,size,0),(0,size,0)],
+
+                # Back
+                [(0,0,size),(size,0,size),(size,size,size)],
+                [(0,0,size),(size,size,size),(0,size,size)],
+
+                # Left
+                [(0,0,0),(0,size,0),(0,size,size)],
+                [(0,0,0),(0,size,size),(0,0,size)],
+
+                # Right
+                [(size,0,0),(size,size,0),(size,size,size)],
+                [(size,0,0),(size,size,size),(size,0,size)],
+
+                # Top
+                [(0,size,0),(size,size,0),(size,size,size)],
+                [(0,size,0),(size,size,size),(0,size,size)],
+
+                # Bottom
+                [(0,0,0),(size,0,0),(size,0,size)],
+                [(0,0,0),(size,0,size),(0,0,size)],
+            ]
+
+            # Rotate once
+            cube = [rotate_y(p, angle) for p in cube]
+            # Move cube away from camera
+            cube = [[(x, y, z + size + 3) for (x, y, z) in poly] for poly in cube]
+
+
+            # Projection
             scale = 50
             offset = 120
+            
+            d = 5  # camera distance
 
             projected = []
+
             for poly in cube:
                 new_poly = []
                 for x, y, z in poly:
-                    sx = x * scale + offset
-                    sy = y * scale + offset
+
+                    # Perspective projection
+                    factor = d / (z + d + 1e-5)
+
+                    xp = x * factor
+                    yp = y * factor
+
+                    sx = xp * scale + offset
+                    sy = yp * scale + offset
+
                     new_poly.append((sx, sy, z))
+
                 projected.append(new_poly)
 
-            color, depth = z_buffer(projected, 300, 300)
+            
+            color, depth = z_buffer_shaded(projected, 300, 300, size)
 
+
+            fig2 = plt.figure(figsize=(6,6))
             plt.imshow(color, cmap="gray")
             plt.axis("off")
-            st.pyplot(fig)
+
+            st.pyplot(fig2)
             st.stop()
 
 

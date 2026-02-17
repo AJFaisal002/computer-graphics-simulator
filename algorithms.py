@@ -356,29 +356,49 @@ def z_buffer(polygons, width, height):
 
 def painters_algorithm(polygons):
     """
-    Painter's Algorithm (Depth-Sort Method)
-
-    Parameters:
-        polygons : List of 3D polygons (each polygon = list of vertices)
-
-    Returns:
-        Sorted list of polygons (far to near)
+    Improved Painter's Algorithm
+    Depth sorting with basic overlap correction
     """
 
-    # Step 1: Compute average depth for each polygon
+    # ---- Step 1: Compute average depth ----
     def average_depth(poly):
-        return sum(vertex[2] for vertex in poly) / len(poly)
+        return sum(v[2] for v in poly) / len(poly)
 
-    # Step 2: Sort polygons from farthest to nearest
+    # ---- Step 2: Initial depth sort (far → near) ----
     sorted_polygons = sorted(
         polygons,
         key=average_depth,
-        reverse=True  # Farther objects first
+        reverse=True
     )
+
+    # ---- Step 3: Basic overlap correction ----
+    i = 0
+    while i < len(sorted_polygons) - 1:
+
+        p1 = sorted_polygons[i]
+        p2 = sorted_polygons[i + 1]
+
+        z1_min = min(v[2] for v in p1)
+        z1_max = max(v[2] for v in p1)
+
+        z2_min = min(v[2] for v in p2)
+        z2_max = max(v[2] for v in p2)
+
+        # If depth ranges overlap → swap
+        if not (z1_max < z2_min or z2_max < z1_min):
+            sorted_polygons[i], sorted_polygons[i + 1] = \
+                sorted_polygons[i + 1], sorted_polygons[i]
+
+            # restart check from beginning
+            i = 0
+            continue
+
+        i += 1
 
     return sorted_polygons
 
-def z_buffer(polygons, width, height):
+
+def z_buffer_shaded(polygons, width, height, max_depth):
 
     depth = np.full((height, width), np.inf)
     color = np.zeros((height, width))
@@ -388,43 +408,38 @@ def z_buffer(polygons, width, height):
         if len(poly) < 3:
             continue
 
-        v0 = np.array(poly[0])
-        v1 = np.array(poly[1])
-        v2 = np.array(poly[2])
+        v0 = np.array(poly[0], dtype=float)
+        v1 = np.array(poly[1], dtype=float)
+        v2 = np.array(poly[2], dtype=float)
 
-        # simple orthographic projection scale
-        scale = 40
-        offset = 150
+        x0, y0 = int(v0[0]), int(v0[1])
+        x1, y1 = int(v1[0]), int(v1[1])
+        x2, y2 = int(v2[0]), int(v2[1])
 
-        v0_2d = np.array([int(v0[0]*scale+offset), int(v0[1]*scale+offset)])
-        v1_2d = np.array([int(v1[0]*scale+offset), int(v1[1]*scale+offset)])
-        v2_2d = np.array([int(v2[0]*scale+offset), int(v2[1]*scale+offset)])
+        min_x = max(min(x0, x1, x2), 0)
+        max_x = min(max(x0, x1, x2), width-1)
+        min_y = max(min(y0, y1, y2), 0)
+        max_y = min(max(y0, y1, y2), height-1)
 
-        min_x = max(min(v0_2d[0], v1_2d[0], v2_2d[0]), 0)
-        max_x = min(max(v0_2d[0], v1_2d[0], v2_2d[0]), width-1)
-        min_y = max(min(v0_2d[1], v1_2d[1], v2_2d[1]), 0)
-        max_y = min(max(v0_2d[1], v1_2d[1], v2_2d[1]), height-1)
-
-        area = np.cross(v1_2d - v0_2d, v2_2d - v0_2d)
-        if area == 0:
+        denom = ((y1 - y2)*(x0 - x2) + (x2 - x1)*(y0 - y2))
+        if denom == 0:
             continue
 
         for y in range(min_y, max_y+1):
             for x in range(min_x, max_x+1):
 
-                p = np.array([x,y])
+                alpha = ((y1 - y2)*(x - x2) + (x2 - x1)*(y - y2)) / denom
+                beta  = ((y2 - y0)*(x - x2) + (x0 - x2)*(y - y2)) / denom
+                gamma = 1 - alpha - beta
 
-                w0 = np.cross(v1_2d - v0_2d, p - v0_2d)
-                w1 = np.cross(v2_2d - v1_2d, p - v1_2d)
-                w2 = np.cross(v0_2d - v2_2d, p - v2_2d)
+                if alpha >= 0 and beta >= 0 and gamma >= 0:
 
-                if (w0 >= 0 and w1 >= 0 and w2 >= 0) or \
-                   (w0 <= 0 and w1 <= 0 and w2 <= 0):
+                    z = alpha*v0[2] + beta*v1[2] + gamma*v2[2]
 
-                    z = (v0[2] + v1[2] + v2[2]) / 3
+                    if z < depth[y, x]:
+                        depth[y, x] = z
 
-                    if z < depth[y][x]:
-                        depth[y][x] = z
-                        color[y][x] = 1
+                        # 🔥 Depth shading (near = white, far = dark)
+                        color[y, x] = (max_depth - z) / max_depth
 
     return color, depth
