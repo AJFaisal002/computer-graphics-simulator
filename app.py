@@ -147,7 +147,6 @@ def rotate_y(points, angle_deg):
 def project(points, scale=60, offset=150):
     projected = []
     for x, y, z in points:
-        # simple orthographic projection
         xp = x * scale + offset
         yp = y * scale + offset
         projected.append((xp, yp, z))
@@ -202,7 +201,8 @@ algorithm = st.sidebar.selectbox(
     "Select Algorithm",
     ["DDA Line","Bresenham Line","Midpoint Circle",
      "Scan-Line Fill","Boundary Fill","Flood Fill",
-     "Back-Face Culling","Painter’s Algorithm","Z-Buffer"]
+     "Back-Face Culling","Painter's Algorithm","Z-Buffer",
+     "Cohen-Sutherland Clipping","Sutherland-Hodgman Clipping"]
 )
 
 # ================= INPUT CONTROLS =================
@@ -223,8 +223,6 @@ if algorithm in ["DDA Line", "Bresenham Line"]:
     with col4:
         y1 = st.number_input("y1", value=15)
 
-    
-
 elif algorithm == "Midpoint Circle":
 
     st.sidebar.subheader("Circle Parameters")
@@ -233,27 +231,20 @@ elif algorithm == "Midpoint Circle":
 
     with col1:
         xc = st.number_input("Center X", value=0)
-
     with col2:
         yc = st.number_input("Center Y", value=0)
-
     with col3:
         r = st.number_input("Radius", min_value=1, value=20)
-
 
 elif algorithm in ["Scan-Line Fill","Boundary Fill","Flood Fill"]:
 
     st.sidebar.subheader("Polygon Vertices")
-    num_vertices = st.sidebar.number_input(
-        "Number of vertices", 3, 8, 4
-    )
+    num_vertices = st.sidebar.number_input("Number of vertices", 3, 8, 4)
 
     vertices = []
-
     default_rect = [(50,50),(150,50),(150,120),(50,120)]
 
     for i in range(num_vertices):
-
         if num_vertices == 4:
             dx, dy = default_rect[i]
         else:
@@ -262,30 +253,58 @@ elif algorithm in ["Scan-Line Fill","Boundary Fill","Flood Fill"]:
             dy = int(150 + 80*np.sin(angle))
 
         col1, col2 = st.sidebar.columns(2)
-
         with col1:
-            x = st.number_input(
-                f"x{i+1}",
-                value=dx,
-                key=f"x{i}"
-            )
-
+            x = st.number_input(f"x{i+1}", value=dx, key=f"x{i}")
         with col2:
-            y = st.number_input(
-                f"y{i+1}",
-                value=dy,
-                key=f"y{i}"
-            )
-
+            y = st.number_input(f"y{i+1}", value=dy, key=f"y{i}")
         vertices.append((int(x), int(y)))
-
 
     seed_x = int(sum(v[0] for v in vertices)/len(vertices))
     seed_y = int(sum(v[1] for v in vertices)/len(vertices))
 
-elif algorithm in ["Back-Face Culling","Painter’s Algorithm","Z-Buffer"]:
+elif algorithm in ["Back-Face Culling","Painter's Algorithm","Z-Buffer"]:
     size = st.sidebar.slider("Cube Size",1,10,5)
     angle = st.sidebar.slider("Rotate Y (degrees)",0,360,45)
+
+elif algorithm in ["Cohen-Sutherland Clipping","Sutherland-Hodgman Clipping"]:
+
+    st.sidebar.subheader("Clip Window")
+    col1, col2 = st.sidebar.columns(2)
+    with col1:
+        x_min = st.number_input("x_min", value=50)
+        y_min = st.number_input("y_min", value=50)
+    with col2:
+        x_max = st.number_input("x_max", value=200)
+        y_max = st.number_input("y_max", value=200)
+
+    if algorithm == "Cohen-Sutherland Clipping":
+        st.sidebar.subheader("Line Points")
+        col3, col4 = st.sidebar.columns(2)
+        with col3:
+            lx0 = st.number_input("x0", value=20)
+            ly0 = st.number_input("y0", value=100)
+        with col4:
+            lx1 = st.number_input("x1", value=250)
+            ly1 = st.number_input("y1", value=180)
+
+    else:
+        st.sidebar.subheader("Polygon Vertices")
+        num_clip_verts = st.sidebar.number_input("Number of vertices", 3, 8, 5)
+        clip_vertices = []
+        default_poly = [(30,90),(120,20),(230,60),(210,210),(60,200)]
+        for i in range(num_clip_verts):
+            if num_clip_verts == 5 and i < 5:
+                dvx, dvy = default_poly[i]
+            else:
+                angle_c = 2*np.pi*i/num_clip_verts
+                dvx = int(130 + 100*np.cos(angle_c))
+                dvy = int(130 + 100*np.sin(angle_c))
+            col5, col6 = st.sidebar.columns(2)
+            with col5:
+                vx = st.number_input(f"x{i+1}", value=dvx, key=f"cvx{i}")
+            with col6:
+                vy = st.number_input(f"y{i+1}", value=dvy, key=f"cvy{i}")
+            clip_vertices.append((int(vx), int(vy)))
 
 draw = st.sidebar.button("▶ Draw")
 
@@ -309,23 +328,21 @@ if draw:
             pts = dda_line(x0,y0,x1,y1)
             xs, ys = zip(*pts)
             ax.scatter(xs, ys)
-               
+
         elif algorithm == "Bresenham Line":
             pts = bresenham_line(x0, y0, x1, y1)
             xs, ys = zip(*pts)
             ax.scatter(xs, ys)
-    
+
         elif algorithm == "Midpoint Circle":
-                pts = midpoint_circle(xc,yc,r)
-                xs, ys = zip(*pts)
-                ax.scatter(xs, ys)
+            pts = midpoint_circle(xc,yc,r)
+            xs, ys = zip(*pts)
+            ax.scatter(xs, ys)
 
         else:
-
             # draw polygon boundary
             for i in range(len(vertices)):
-                edge = dda_line(*vertices[i],
-                                *vertices[(i+1)%len(vertices)])
+                edge = dda_line(*vertices[i], *vertices[(i+1)%len(vertices)])
                 xs, ys = zip(*edge)
                 ax.plot(xs, ys)
 
@@ -335,19 +352,15 @@ if draw:
                     xs, ys = zip(*pts)
                     ax.scatter(xs, ys, s=25, marker='s')
 
-
             else:
                 canvas = np.zeros((300,300))
                 for i in range(len(vertices)):
-                    edge = dda_line(*vertices[i],
-                                    *vertices[(i+1)%len(vertices)])
+                    edge = dda_line(*vertices[i], *vertices[(i+1)%len(vertices)])
                     for px, py in edge:
                         if 0 <= px < 300 and 0 <= py < 300:
                             canvas[py][px] = 1
-                            # make boundary thicker (important)
                             if px+1 < 300: canvas[py][px+1] = 1
                             if py+1 < 300: canvas[py+1][px] = 1
-
 
                 if algorithm == "Boundary Fill":
                     boundary_fill(seed_x, seed_y, 1, 2, canvas)
@@ -358,6 +371,71 @@ if draw:
 
                 ax.scatter(fx, fy, s=5)
 
+        st.pyplot(fig)
+
+    # ================= CLIPPING =================
+    elif algorithm == "Cohen-Sutherland Clipping":
+
+        ax = fig.add_subplot(111)
+        ax.set_aspect("equal")
+        ax.grid(True)
+        ax.set_xlim(0, 300)
+        ax.set_ylim(0, 300)
+        ax.set_title("Cohen-Sutherland Line Clipping")
+
+        rect = plt.Rectangle((x_min, y_min), x_max-x_min, y_max-y_min,
+                              linewidth=2, edgecolor="black",
+                              facecolor="lightyellow", label="Clip Window")
+        ax.add_patch(rect)
+
+        ax.plot([lx0, lx1], [ly0, ly1], color="lightblue", linewidth=2,
+                linestyle="--", label="Original Line")
+
+        result = cohen_sutherland_clip(lx0, ly0, lx1, ly1,
+                                       x_min, y_min, x_max, y_max)
+        if result:
+            cx0, cy0, cx1, cy1 = result
+            ax.plot([cx0, cx1], [cy0, cy1], color="red",
+                    linewidth=3, label="Clipped Line")
+            ax.scatter([cx0, cx1], [cy0, cy1], color="red", zorder=5)
+            st.success(f"Clipped Line: ({cx0:.1f}, {cy0:.1f}) -> ({cx1:.1f}, {cy1:.1f})")
+        else:
+            st.warning("Line is completely outside the clip window.")
+
+        ax.legend()
+        st.pyplot(fig)
+
+    elif algorithm == "Sutherland-Hodgman Clipping":
+
+        ax = fig.add_subplot(111)
+        ax.set_aspect("equal")
+        ax.grid(True)
+        ax.set_xlim(0, 300)
+        ax.set_ylim(0, 300)
+        ax.set_title("Sutherland-Hodgman Polygon Clipping")
+
+        rect = plt.Rectangle((x_min, y_min), x_max-x_min, y_max-y_min,
+                              linewidth=2, edgecolor="black",
+                              facecolor="lightyellow", label="Clip Window")
+        ax.add_patch(rect)
+
+        orig_xs = [v[0] for v in clip_vertices] + [clip_vertices[0][0]]
+        orig_ys = [v[1] for v in clip_vertices] + [clip_vertices[0][1]]
+        ax.plot(orig_xs, orig_ys, color="lightblue", linewidth=2,
+                linestyle="--", label="Original Polygon")
+
+        clipped = sutherland_hodgman_clip(clip_vertices,
+                                          x_min, y_min, x_max, y_max)
+        if clipped:
+            clip_xs = [v[0] for v in clipped] + [clipped[0][0]]
+            clip_ys = [v[1] for v in clipped] + [clipped[0][1]]
+            ax.fill(clip_xs, clip_ys, alpha=0.4, color="red", label="Clipped Region")
+            ax.plot(clip_xs, clip_ys, color="red", linewidth=2)
+            st.success(f"Clipped polygon has {len(clipped)} vertices.")
+        else:
+            st.warning("Polygon is completely outside the clip window.")
+
+        ax.legend()
         st.pyplot(fig)
 
     # ================= 3D =================
@@ -371,77 +449,55 @@ if draw:
             [(0,0,size),(size,size,size),(0,size,size)]
         ]
 
-
         cube = [rotate_y(p, angle) for p in cube]
 
         if algorithm == "Back-Face Culling":
             cube = backface_culling(cube)
-        elif algorithm == "Painter’s Algorithm":
+        elif algorithm == "Painter's Algorithm":
             cube = painters_algorithm(cube)
         elif algorithm == "Z-Buffer":
 
-            # 6-face solid cube (12 triangles)
             cube = [
-
                 # Front
                 [(0,0,0),(size,0,0),(size,size,0)],
                 [(0,0,0),(size,size,0),(0,size,0)],
-
                 # Back
                 [(0,0,size),(size,0,size),(size,size,size)],
                 [(0,0,size),(size,size,size),(0,size,size)],
-
                 # Left
                 [(0,0,0),(0,size,0),(0,size,size)],
                 [(0,0,0),(0,size,size),(0,0,size)],
-
                 # Right
                 [(size,0,0),(size,size,0),(size,size,size)],
                 [(size,0,0),(size,size,size),(size,0,size)],
-
                 # Top
                 [(0,size,0),(size,size,0),(size,size,size)],
                 [(0,size,0),(size,size,size),(0,size,size)],
-
                 # Bottom
                 [(0,0,0),(size,0,0),(size,0,size)],
                 [(0,0,0),(size,0,size),(0,0,size)],
             ]
 
-            # Rotate once
             cube = [rotate_y(p, angle) for p in cube]
-            # Move cube away from camera
             cube = [[(x, y, z + size + 3) for (x, y, z) in poly] for poly in cube]
 
-
-            # Projection
             scale = 50
             offset = 120
-            
-            d = 5  # camera distance
+            d = 5
 
             projected = []
-
             for poly in cube:
                 new_poly = []
                 for x, y, z in poly:
-
-                    # Perspective projection
                     factor = d / (z + d + 1e-5)
-
                     xp = x * factor
                     yp = y * factor
-
                     sx = xp * scale + offset
                     sy = yp * scale + offset
-
                     new_poly.append((sx, sy, z))
-
                 projected.append(new_poly)
 
-            
             color, depth = z_buffer_shaded(projected, 300, 300, size)
-
 
             fig2 = plt.figure(figsize=(6,6))
             plt.imshow(color, cmap="gray")
@@ -449,11 +505,6 @@ if draw:
 
             st.pyplot(fig2)
             st.stop()
-
-
-
-
-
 
         for poly in cube:
             xs = [v[0] for v in poly] + [poly[0][0]]

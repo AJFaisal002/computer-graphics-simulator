@@ -443,3 +443,142 @@ def z_buffer_shaded(polygons, width, height, max_depth):
                         color[y, x] = (max_depth - z) / max_depth
 
     return color, depth
+
+
+# ==========================================================
+# CLIPPING ALGORITHMS
+# ==========================================================
+
+# ----------------------------------------------------------
+# Cohen–Sutherland Line Clipping Algorithm
+# ----------------------------------------------------------
+
+INSIDE = 0  # 0000
+LEFT   = 1  # 0001
+RIGHT  = 2  # 0010
+BOTTOM = 4  # 0100
+TOP    = 8  # 1000
+
+def _compute_code(x, y, x_min, y_min, x_max, y_max):
+    code = INSIDE
+    if x < x_min:
+        code |= LEFT
+    elif x > x_max:
+        code |= RIGHT
+    if y < y_min:
+        code |= BOTTOM
+    elif y > y_max:
+        code |= TOP
+    return code
+
+
+def cohen_sutherland_clip(x0, y0, x1, y1, x_min, y_min, x_max, y_max):
+    """
+    Cohen–Sutherland Line Clipping Algorithm
+
+    Parameters:
+        x0, y0      : Start point of the line
+        x1, y1      : End point of the line
+        x_min, y_min: Bottom-left corner of the clip rectangle
+        x_max, y_max: Top-right corner of the clip rectangle
+
+    Returns:
+        (clipped_x0, clipped_y0, clipped_x1, clipped_y1) if line is visible
+        None if the line is completely outside the clip window
+    """
+    code0 = _compute_code(x0, y0, x_min, y_min, x_max, y_max)
+    code1 = _compute_code(x1, y1, x_min, y_min, x_max, y_max)
+
+    while True:
+        if code0 == INSIDE and code1 == INSIDE:
+            return (x0, y0, x1, y1)
+
+        elif code0 & code1:
+            return None
+
+        else:
+            code_out = code0 if code0 != INSIDE else code1
+
+            if code_out & TOP:
+                x = x0 + (x1 - x0) * (y_max - y0) / (y1 - y0)
+                y = y_max
+            elif code_out & BOTTOM:
+                x = x0 + (x1 - x0) * (y_min - y0) / (y1 - y0)
+                y = y_min
+            elif code_out & RIGHT:
+                y = y0 + (y1 - y0) * (x_max - x0) / (x1 - x0)
+                x = x_max
+            elif code_out & LEFT:
+                y = y0 + (y1 - y0) * (x_min - x0) / (x1 - x0)
+                x = x_min
+
+            if code_out == code0:
+                x0, y0 = x, y
+                code0 = _compute_code(x0, y0, x_min, y_min, x_max, y_max)
+            else:
+                x1, y1 = x, y
+                code1 = _compute_code(x1, y1, x_min, y_min, x_max, y_max)
+
+
+# ----------------------------------------------------------
+# Sutherland–Hodgman Polygon Clipping Algorithm
+# ----------------------------------------------------------
+
+def _sh_inside(p, edge_start, edge_end):
+    return (
+        (edge_end[0] - edge_start[0]) * (p[1] - edge_start[1]) -
+        (edge_end[1] - edge_start[1]) * (p[0] - edge_start[0])
+    ) >= 0
+
+
+def _sh_intersect(p1, p2, edge_start, edge_end):
+    dc = (edge_start[0] - edge_end[0], edge_start[1] - edge_end[1])
+    dp = (p1[0] - p2[0], p1[1] - p2[1])
+    n1 = edge_start[0] * edge_end[1] - edge_start[1] * edge_end[0]
+    n2 = p1[0] * p2[1] - p1[1] * p2[0]
+    denom = dc[0] * dp[1] - dc[1] * dp[0]
+    if denom == 0:
+        return p1
+    x = (n1 * dp[0] - n2 * dc[0]) / denom
+    y = (n1 * dp[1] - n2 * dc[1]) / denom
+    return (x, y)
+
+
+def sutherland_hodgman_clip(polygon, x_min, y_min, x_max, y_max):
+    """
+    Sutherland–Hodgman Polygon Clipping Algorithm
+
+    Parameters:
+        polygon     : List of (x, y) vertices (ordered CCW or CW)
+        x_min, y_min: Bottom-left corner of the clip rectangle
+        x_max, y_max: Top-right corner of the clip rectangle
+
+    Returns:
+        List of (x, y) vertices of the clipped polygon.
+        Empty list if polygon is completely outside.
+    """
+    clip_edges = [
+        ((x_min, y_min), (x_max, y_min)),  # Bottom
+        ((x_max, y_min), (x_max, y_max)),  # Right
+        ((x_max, y_max), (x_min, y_max)),  # Top
+        ((x_min, y_max), (x_min, y_min)),  # Left
+    ]
+
+    output = list(polygon)
+
+    for edge_start, edge_end in clip_edges:
+        if not output:
+            return []
+        input_list = output
+        output = []
+        for i in range(len(input_list)):
+            current = input_list[i]
+            previous = input_list[i - 1]
+            if _sh_inside(current, edge_start, edge_end):
+                if not _sh_inside(previous, edge_start, edge_end):
+                    output.append(_sh_intersect(previous, current, edge_start, edge_end))
+                output.append(current)
+            elif _sh_inside(previous, edge_start, edge_end):
+                output.append(_sh_intersect(previous, current, edge_start, edge_end))
+
+    return output
