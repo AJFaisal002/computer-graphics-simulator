@@ -457,6 +457,8 @@ if st.session_state.draw and algorithm != "Z-Buffer":
         ax.set_ylim(0, 300)
         ax.set_title("Cohen-Sutherland Line Clipping")
 
+
+
         # ===== DRAW CLIP WINDOW =====
         rect = plt.Rectangle(
             (x_min, y_min),
