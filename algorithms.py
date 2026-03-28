@@ -266,6 +266,7 @@ def flood_fill(seed_x, seed_y, target_color, replacement_color, canvas):
 # POLYGON FILLING ALGORITHMS
 # ==========================================================
 
+
 def backface_culling(polygons, view_vector=(0, 0, -1)): 
     """
     Back-Face Culling Algorithm
@@ -304,56 +305,119 @@ def backface_culling(polygons, view_vector=(0, 0, -1)):
 
     return visible_polygons
 
+
+
+
 def edge_function(a, b, c):
     return (c[0] - a[0]) * (b[1] - a[1]) - \
            (c[1] - a[1]) * (b[0] - a[0])
            
-def z_buffer(polygons, width, height):
+import numpy as np
 
-    depth_buffer = np.full((height, width), np.inf)
-    color_buffer = np.zeros((height, width))
+def z_buffer(polygons, width, height, max_depth=1000):
+    """
+    Advanced Z-Buffer with Depth Shading
+    """
+
+    depth = np.full((height, width), np.inf)
+    color = np.zeros((height, width))
 
     for poly in polygons:
 
-        v0 = np.array(poly[0])
-        v1 = np.array(poly[1])
-        v2 = np.array(poly[2])
-
-        min_x = max(int(min(v0[0], v1[0], v2[0])), 0)
-        max_x = min(int(max(v0[0], v1[0], v2[0])), width-1)
-        min_y = max(int(min(v0[1], v1[1], v2[1])), 0)
-        max_y = min(int(max(v0[1], v1[1], v2[1])), height-1)
-
-        area = edge_function(v0, v1, v2)
-        if area == 0:
+        if len(poly) < 3:
             continue
 
-        for y in range(min_y, max_y+1):
-            for x in range(min_x, max_x+1):
+        v0 = np.array(poly[0], dtype=float)
+        v1 = np.array(poly[1], dtype=float)
+        v2 = np.array(poly[2], dtype=float)
 
-                p = np.array([x, y])
+        # Bounding box
+        min_x = max(int(min(v0[0], v1[0], v2[0])), 0)
+        max_x = min(int(max(v0[0], v1[0], v2[0])), width - 1)
 
-                w0 = edge_function(v1, v2, p)
-                w1 = edge_function(v2, v0, p)
-                w2 = edge_function(v0, v1, p)
+        min_y = max(int(min(v0[1], v1[1], v2[1])), 0)
+        max_y = min(int(max(v0[1], v1[1], v2[1])), height - 1)
 
-                if (w0 >= 0 and w1 >= 0 and w2 >= 0) or \
-                   (w0 <= 0 and w1 <= 0 and w2 <= 0):
+        denom = ((v1[1] - v2[1]) * (v0[0] - v2[0]) +
+                 (v2[0] - v1[0]) * (v0[1] - v2[1]))
 
-                    w0 /= area
-                    w1 /= area
-                    w2 /= area
+        if denom == 0:
+            continue
 
-                    z = w0*v0[2] + w1*v1[2] + w2*v2[2]
+        for y in range(min_y, max_y + 1):
+            for x in range(min_x, max_x + 1):
 
-                    if z < depth_buffer[y][x]:
-                        depth_buffer[y][x] = z
-                        color_buffer[y][x] = 1
+                # barycentric
+                w1 = ((v1[1] - v2[1]) * (x - v2[0]) +
+                      (v2[0] - v1[0]) * (y - v2[1])) / denom
 
-    return color_buffer, depth_buffer
+                w2 = ((v2[1] - v0[1]) * (x - v2[0]) +
+                      (v0[0] - v2[0]) * (y - v2[1])) / denom
 
+                w3 = 1 - w1 - w2
 
+                if w1 >= 0 and w2 >= 0 and w3 >= 0:
 
+                    z = w1*v0[2] + w2*v1[2] + w3*v2[2]
+
+                    if z < depth[y, x]:
+
+                        depth[y, x] = z
+
+                        # 🔥 depth shading
+                        intensity = (max_depth - z) / max_depth
+                        intensity = np.clip(intensity, 0, 1)
+
+                        color[y, x] = intensity
+
+    return color, depth
+import numpy as np
+
+# ================= VECTOR =================
+def dot(a, b):
+    return np.dot(a, b)
+
+def norm(v):
+    return v / (np.linalg.norm(v) + 1e-8)
+
+# ================= NORMAL =================
+def normal(a,b,c):
+    return norm(np.cross(b-a, c-a))
+
+# ================= SHADING =================
+def shade(n, base):
+    L = norm(np.array([1,1,-1]))
+    diff = max(dot(n, L), 0)
+
+    intensity = 0.6 + 0.8 * diff
+    return np.clip(base * 255 * intensity, 0, 255)
+
+# ================= TRIANGLE Z-BUFFER =================
+def triangle_zbuffer(img, zbuf, p1, p2, p3, col, W, H):
+
+    d = ((p2[1]-p3[1])*(p1[0]-p3[0]) + (p3[0]-p2[0])*(p1[1]-p3[1]))
+    if d == 0:
+        return
+
+    minX = int(max(0, min(p1[0],p2[0],p3[0])))
+    maxX = int(min(W-1, max(p1[0],p2[0],p3[0])))
+    minY = int(max(0, min(p1[1],p2[1],p3[1])))
+    maxY = int(min(H-1, max(p1[1],p2[1],p3[1])))
+
+    for y in range(minY, maxY):
+        for x in range(minX, maxX):
+
+            w1 = ((p2[1]-p3[1])*(x-p3[0])+(p3[0]-p2[0])*(y-p3[1]))/d
+            w2 = ((p3[1]-p1[1])*(x-p3[0])+(p1[0]-p3[0])*(y-p3[1]))/d
+            w3 = 1 - w1 - w2
+
+            if w1>=0 and w2>=0 and w3>=0:
+
+                z = w1*p1[2] + w2*p2[2] + w3*p3[2]
+
+                if z < zbuf[y,x]:
+                    zbuf[y,x] = z
+                    img[y,x] = col
 def painters_algorithm(polygons):
     """
     Improved Painter's Algorithm
@@ -398,7 +462,18 @@ def painters_algorithm(polygons):
     return sorted_polygons
 
 
+import numpy as np
+
+import numpy as np
+
 def z_buffer_shaded(polygons, width, height, max_depth):
+    """
+    Z-Buffer with Depth Shading (HTML version converted)
+
+    polygons : list of triangles [(x,y,z),...]
+    width, height : screen size
+    max_depth : used for shading
+    """
 
     depth = np.full((height, width), np.inf)
     color = np.zeros((height, width))
@@ -412,39 +487,118 @@ def z_buffer_shaded(polygons, width, height, max_depth):
         v1 = np.array(poly[1], dtype=float)
         v2 = np.array(poly[2], dtype=float)
 
-        x0, y0 = int(v0[0]), int(v0[1])
-        x1, y1 = int(v1[0]), int(v1[1])
-        x2, y2 = int(v2[0]), int(v2[1])
+        # -------- Bounding Box --------
+        min_x = max(int(min(v0[0], v1[0], v2[0])), 0)
+        max_x = min(int(max(v0[0], v1[0], v2[0])), width - 1)
 
-        min_x = max(min(x0, x1, x2), 0)
-        max_x = min(max(x0, x1, x2), width-1)
-        min_y = max(min(y0, y1, y2), 0)
-        max_y = min(max(y0, y1, y2), height-1)
+        min_y = max(int(min(v0[1], v1[1], v2[1])), 0)
+        max_y = min(int(max(v0[1], v1[1], v2[1])), height - 1)
 
-        denom = ((y1 - y2)*(x0 - x2) + (x2 - x1)*(y0 - y2))
+        # -------- Barycentric denominator --------
+        denom = ((v1[1] - v2[1]) * (v0[0] - v2[0]) +
+                 (v2[0] - v1[0]) * (v0[1] - v2[1]))
+
         if denom == 0:
             continue
 
-        for y in range(min_y, max_y+1):
-            for x in range(min_x, max_x+1):
+        # -------- Rasterization --------
+        for y in range(min_y, max_y + 1):
+            for x in range(min_x, max_x + 1):
 
-                alpha = ((y1 - y2)*(x - x2) + (x2 - x1)*(y - y2)) / denom
-                beta  = ((y2 - y0)*(x - x2) + (x0 - x2)*(y - y2)) / denom
-                gamma = 1 - alpha - beta
+                # barycentric coordinates
+                w1 = ((v1[1] - v2[1]) * (x - v2[0]) +
+                      (v2[0] - v1[0]) * (y - v2[1])) / denom
 
-                if alpha >= 0 and beta >= 0 and gamma >= 0:
+                w2 = ((v2[1] - v0[1]) * (x - v2[0]) +
+                      (v0[0] - v2[0]) * (y - v2[1])) / denom
 
-                    z = alpha*v0[2] + beta*v1[2] + gamma*v2[2]
+                w3 = 1 - w1 - w2
 
+                # inside triangle
+                if w1 >= 0 and w2 >= 0 and w3 >= 0:
+
+                    # depth interpolation
+                    z = w1 * v0[2] + w2 * v1[2] + w3 * v2[2]
+
+                    # z-buffer test
                     if z < depth[y, x]:
                         depth[y, x] = z
 
-                        # 🔥 Depth shading (near = white, far = dark)
-                        color[y, x] = (max_depth - z) / max_depth
+                        # -------- Depth Shading --------
+                        # near = bright, far = dark
+                        intensity = (max_depth - z) / max_depth
+                        intensity = np.clip(intensity, 0, 1)
+
+                        color[y, x] = intensity
 
     return color, depth
 
+import numpy as np
 
+# ================= ROTATION =================
+def rotate_y(points, angle_deg):
+    angle = np.radians(angle_deg)
+    cosA = np.cos(angle)
+    sinA = np.sin(angle)
+
+    rotated = []
+    for x, y, z in points:
+        xr = x * cosA + z * sinA
+        zr = -x * sinA + z * cosA
+        rotated.append((xr, y, zr))
+    return rotated
+
+
+# ================= BACK-FACE CULLING =================
+import numpy as np
+
+# ================= ROTATION =================
+def rotate_y(points, angle_deg):
+    angle = np.radians(angle_deg)
+    cosA = np.cos(angle)
+    sinA = np.sin(angle)
+
+    rotated = []
+    for x, y, z in points:
+        xr = x * cosA + z * sinA
+        zr = -x * sinA + z * cosA
+        rotated.append((xr, y, zr))
+    return rotated
+
+
+# ================= BACK-FACE CULLING =================
+import numpy as np
+
+def backface_culling_faces(faces):
+    visible = []
+
+    camera = np.array([0, 0, 50.0])   # camera position
+
+    for face in faces:
+        v0 = np.array(face[0])
+        v1 = np.array(face[1])
+        v2 = np.array(face[2])
+
+        # normal (correct order)
+        normal = np.cross(v1 - v0, v2 - v0)
+
+        if np.linalg.norm(normal) == 0:
+            continue
+
+        normal = normal / np.linalg.norm(normal)
+
+        # face center
+        center = (v0 + v1 + v2) / 3.0
+
+        # view vector
+        view = center - camera
+        view = view / np.linalg.norm(view)
+
+        # visible check
+        if np.dot(normal, view) < 0:
+            visible.append(face)
+
+    return visible
 # ==========================================================
 # CLIPPING ALGORITHMS
 # ==========================================================

@@ -2,7 +2,13 @@ import streamlit as st
 import matplotlib.pyplot as plt
 import numpy as np
 from collections import deque
+import streamlit as st
+import numpy as np
+import time
 from algorithms import *
+from algorithms import rotate_y, backface_culling_faces
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+from algorithms import triangle_zbuffer, normal, shade
 
 # ===================== ALGORITHMS =========================
 
@@ -112,24 +118,43 @@ def boundary_fill(seed_x, seed_y, boundary_color, fill_color, canvas):
 
     while stack:
         x, y = stack.pop()
-        if 0 <= x < w and 0 <= y < h:
-            if canvas[y][x] != boundary_color and canvas[y][x] != fill_color:
-                canvas[y][x] = fill_color
-                stack.extend([(x+1,y),(x-1,y),(x,y+1),(x,y-1)])
 
+        if not (0 <= x < w and 0 <= y < h):
+            continue
+
+        # 🔥 STRICT CHECK (VERY IMPORTANT)
+        if canvas[y][x] == boundary_color or canvas[y][x] == fill_color:
+            continue
+
+        canvas[y][x] = fill_color
+
+        stack.append((x+1,y))
+        stack.append((x-1,y))
+        stack.append((x,y+1))
+        stack.append((x,y-1))
 
 def flood_fill(seed_x, seed_y, target, replacement, canvas):
+    if target == replacement:
+        return   # 🔥 important
+
     queue = deque([(seed_x, seed_y)])
     h, w = canvas.shape
 
     while queue:
         x, y = queue.popleft()
+
         if 0 <= x < w and 0 <= y < h:
-            if canvas[y][x] == target:
-                canvas[y][x] = replacement
-                queue.extend([(x+1,y),(x-1,y),(x,y+1),(x,y-1)])
 
+            # 🔥 STRICT CHECK
+            if canvas[y][x] != target:
+                continue
 
+            canvas[y][x] = replacement
+
+            queue.append((x+1,y))
+            queue.append((x-1,y))
+            queue.append((x,y+1))
+            queue.append((x,y-1))
 # ===================== 3D =======================
 
 def rotate_y(points, angle_deg):
@@ -153,17 +178,33 @@ def project(points, scale=60, offset=150):
     return projected
 
 
-def backface_culling(polygons, view=(0,0,-1)):
+def backface_culling_faces(faces):
     visible = []
-    view = np.array(view)
 
-    for poly in polygons:
-        v0 = np.array(poly[0])
-        v1 = np.array(poly[1])
-        v2 = np.array(poly[2])
-        normal = np.cross(v1-v0, v2-v0)
-        if np.dot(normal, view) < 0:
-            visible.append(poly)
+    camera = np.array([0, 0, 100])  # 🔥 camera in front
+
+    for face in faces:
+        v0 = np.array(face[0])
+        v1 = np.array(face[1])
+        v2 = np.array(face[2])
+
+        # normal
+        normal = np.cross(v1 - v0, v2 - v0)
+        if np.linalg.norm(normal) == 0:
+            continue
+        normal = normal / np.linalg.norm(normal)
+
+        # face center
+        center = (v0 + v1 + v2) / 3
+
+        # view vector (IMPORTANT)
+        view = camera - center
+        view = view / np.linalg.norm(view)
+
+        # 🔥 CORRECT CONDITION
+        if np.dot(normal, view) > 0:
+            visible.append(face)
+
     return visible
 
 
@@ -172,20 +213,6 @@ def painters_algorithm(polygons):
                   key=lambda p: sum(v[2] for v in p)/len(p),
                   reverse=True)
 
-
-def z_buffer(polygons, width, height):
-    depth = np.full((height, width), np.inf)
-    color = np.zeros((height, width))
-
-    for poly in polygons:
-        for v in poly:
-            x, y, z = int(v[0]), int(v[1]), v[2]
-            if 0 <= x < width and 0 <= y < height:
-                if z < depth[y][x]:
-                    depth[y][x] = z
-                    color[y][x] = 1
-
-    return color, depth
 
 
 # ==========================================================
@@ -305,14 +332,27 @@ elif algorithm in ["Cohen-Sutherland Clipping","Sutherland-Hodgman Clipping"]:
             with col6:
                 vy = st.number_input(f"y{i+1}", value=dvy, key=f"cvy{i}")
             clip_vertices.append((int(vx), int(vy)))
+        # ================= Z-BUFFER (FIXED 🔥) =================
+# ================= Z-BUFFER (FIXED 🔥) =================
+if "draw" not in st.session_state:
+    st.session_state.draw = False
 
-draw = st.sidebar.button("▶ Draw")
+if st.sidebar.button("▶ Draw"):
+    st.session_state.draw = True
+    
+if "run_z" not in st.session_state:
+    st.session_state.run_z = False
+
+if st.session_state.draw and algorithm == "Z-Buffer":
+    st.session_state.run_z = True            
+
 
 # ==========================================================
 # DRAW SECTION
 # ==========================================================
 
-if draw:
+if st.session_state.draw and algorithm != "Z-Buffer":
+    
 
     fig = plt.figure(figsize=(6,6))
 
@@ -358,9 +398,11 @@ if draw:
                     edge = dda_line(*vertices[i], *vertices[(i+1)%len(vertices)])
                     for px, py in edge:
                         if 0 <= px < 300 and 0 <= py < 300:
-                            canvas[py][px] = 1
-                            if px+1 < 300: canvas[py][px+1] = 1
-                            if py+1 < 300: canvas[py+1][px] = 1
+                            for dx in [-1,0,1]:
+                                for dy in [-1,0,1]:
+                                    nx, ny = px + dx, py + dy
+                                    if 0 <= nx < 300 and 0 <= ny < 300:
+                                        canvas[ny][nx] = 1
 
                 if algorithm == "Boundary Fill":
                     boundary_fill(seed_x, seed_y, 1, 2, canvas)
@@ -373,37 +415,6 @@ if draw:
 
         st.pyplot(fig)
 
-    # ================= CLIPPING =================
-    elif algorithm == "Cohen-Sutherland Clipping":
-
-        ax = fig.add_subplot(111)
-        ax.set_aspect("equal")
-        ax.grid(True)
-        ax.set_xlim(0, 300)
-        ax.set_ylim(0, 300)
-        ax.set_title("Cohen-Sutherland Line Clipping")
-
-        rect = plt.Rectangle((x_min, y_min), x_max-x_min, y_max-y_min,
-                              linewidth=2, edgecolor="black",
-                              facecolor="lightyellow", label="Clip Window")
-        ax.add_patch(rect)
-
-        ax.plot([lx0, lx1], [ly0, ly1], color="lightblue", linewidth=2,
-                linestyle="--", label="Original Line")
-
-        result = cohen_sutherland_clip(lx0, ly0, lx1, ly1,
-                                       x_min, y_min, x_max, y_max)
-        if result:
-            cx0, cy0, cx1, cy1 = result
-            ax.plot([cx0, cx1], [cy0, cy1], color="red",
-                    linewidth=3, label="Clipped Line")
-            ax.scatter([cx0, cx1], [cy0, cy1], color="red", zorder=5)
-            st.success(f"Clipped Line: ({cx0:.1f}, {cy0:.1f}) -> ({cx1:.1f}, {cy1:.1f})")
-        else:
-            st.warning("Line is completely outside the clip window.")
-
-        ax.legend()
-        st.pyplot(fig)
 
     elif algorithm == "Sutherland-Hodgman Clipping":
 
@@ -437,82 +448,286 @@ if draw:
 
         ax.legend()
         st.pyplot(fig)
+    elif algorithm == "Cohen-Sutherland Clipping":
+
+        ax = fig.add_subplot(111)
+        ax.set_aspect("equal")
+        ax.grid(True)
+        ax.set_xlim(0, 300)
+        ax.set_ylim(0, 300)
+        ax.set_title("Cohen-Sutherland Line Clipping")
+
+        # ===== DRAW CLIP WINDOW =====
+        rect = plt.Rectangle(
+            (x_min, y_min),
+            x_max - x_min,
+            y_max - y_min,
+            linewidth=2,
+            edgecolor="black",
+            facecolor="lightyellow",
+            label="Clip Window"
+        )
+        ax.add_patch(rect)
+
+        # ===== ORIGINAL LINE =====
+        ax.plot(
+            [lx0, lx1],
+            [ly0, ly1],
+            linestyle="--",
+            color="skyblue",
+            linewidth=2,
+            label="Original Line"
+        )
+
+        # ===== APPLY CLIPPING =====
+        clipped = cohen_sutherland_clip(
+            lx0, ly0, lx1, ly1,
+            x_min, y_min, x_max, y_max
+        )
+
+        # ===== RESULT TEXT (TOP GREEN BOX) =====
+        if clipped:
+            x0c, y0c, x1c, y1c = clipped
+
+            st.success(
+                f"Clipped Line: ({x0c:.1f}, {y0c:.1f}) → ({x1c:.1f}, {y1c:.1f})"
+            )
+
+            # ===== DRAW CLIPPED LINE =====
+            ax.plot(
+                [x0c, x1c],
+                [y0c, y1c],
+                color="red",
+                linewidth=3,
+                label="Clipped Line"
+            )
+
+        else:
+            st.error("Line is completely outside the clipping window ❌")
+
+        # ===== LEGEND =====
+        ax.legend()
+
+        # ===== SHOW =====
+        st.pyplot(fig)    
 
     # ================= 3D =================
+# ================= 3D =================
     else:
         ax = fig.add_subplot(111, projection='3d')
 
-        cube = [
-            [(0,0,0),(size,0,0),(size,size,0)],
-            [(0,0,0),(size,size,0),(0,size,0)],
-            [(0,0,size),(size,0,size),(size,size,size)],
-            [(0,0,size),(size,size,size),(0,size,size)]
-        ]
-
-        cube = [rotate_y(p, angle) for p in cube]
-
+        # ================= BACK-FACE ONLY FIX =================
         if algorithm == "Back-Face Culling":
-            cube = backface_culling(cube)
-        elif algorithm == "Painter's Algorithm":
-            cube = painters_algorithm(cube)
-        elif algorithm == "Z-Buffer":
 
-            cube = [
-                # Front
-                [(0,0,0),(size,0,0),(size,size,0)],
-                [(0,0,0),(size,size,0),(0,size,0)],
-                # Back
-                [(0,0,size),(size,0,size),(size,size,size)],
-                [(0,0,size),(size,size,size),(0,size,size)],
-                # Left
-                [(0,0,0),(0,size,0),(0,size,size)],
-                [(0,0,0),(0,size,size),(0,0,size)],
-                # Right
-                [(size,0,0),(size,size,0),(size,size,size)],
-                [(size,0,0),(size,size,size),(size,0,size)],
-                # Top
-                [(0,size,0),(size,size,0),(size,size,size)],
-                [(0,size,0),(size,size,size),(0,size,size)],
-                # Bottom
-                [(0,0,0),(size,0,0),(size,0,size)],
-                [(0,0,0),(size,0,size),(0,0,size)],
+    # ===== VERTICES =====
+            verts = np.array([
+                [-1,-1,-1],[1,-1,-1],[1,1,-1],[-1,1,-1],
+                [-1,-1, 1],[1,-1, 1],[1,1, 1],[-1,1, 1]
+            ]) * size
+
+            # ===== ROTATE =====
+            verts = np.array(rotate_y(verts, angle))
+
+            # ===== FACES (for culling only) =====
+            faces = [
+                [0,1,2],[0,2,3],
+                [4,5,6],[4,6,7],
+                [0,1,5],[0,5,4],
+                [2,3,7],[2,7,6],
+                [1,2,6],[1,6,5],
+                [0,3,7],[0,7,4]
             ]
 
-            cube = [rotate_y(p, angle) for p in cube]
-            cube = [[(x, y, z + size + 3) for (x, y, z) in poly] for poly in cube]
+            # ===== BACK-FACE CULLING =====
+            visible_faces = []
+            camera = np.array([0,0,100])
 
-            scale = 50
-            offset = 120
-            d = 5
+            for f in faces:
+                v0, v1, v2 = verts[f[0]], verts[f[1]], verts[f[2]]
 
-            projected = []
-            for poly in cube:
-                new_poly = []
-                for x, y, z in poly:
-                    factor = d / (z + d + 1e-5)
-                    xp = x * factor
-                    yp = y * factor
-                    sx = xp * scale + offset
-                    sy = yp * scale + offset
-                    new_poly.append((sx, sy, z))
-                projected.append(new_poly)
+                normal = np.cross(v1 - v0, v2 - v0)
+                if np.linalg.norm(normal) == 0:
+                    continue
+                normal = normal / np.linalg.norm(normal)
 
-            color, depth = z_buffer_shaded(projected, 300, 300, size)
+                center = (v0 + v1 + v2) / 3
+                view = camera - center
+                view = view / np.linalg.norm(view)
 
-            fig2 = plt.figure(figsize=(6,6))
-            plt.imshow(color, cmap="gray")
-            plt.axis("off")
+                if np.dot(normal, view) > 0:
+                    visible_faces.append(f)
 
-            st.pyplot(fig2)
-            st.stop()
+            # ===== REAL CUBE EDGES =====
+            edge_idx = [
+                (0,1),(1,2),(2,3),(3,0),
+                (4,5),(5,6),(6,7),(7,4),
+                (0,4),(1,5),(2,6),(3,7)
+            ]
 
-        for poly in cube:
-            xs = [v[0] for v in poly] + [poly[0][0]]
-            ys = [v[1] for v in poly] + [poly[0][1]]
-            zs = [v[2] for v in poly] + [poly[0][2]]
-            ax.plot(xs,ys,zs)
+            # ===== DRAW ONLY TRUE EDGES =====
+            for i, j in edge_idx:
+                x = [verts[i][0], verts[j][0]]
+                y = [verts[i][1], verts[j][1]]
+                z = [verts[i][2], verts[j][2]]
+                ax.plot(x, y, z, color='black', linewidth=2)
 
-        st.pyplot(fig)
+            # ===== VIEW =====
+            ax.view_init(elev=20, azim=30)
+            ax.set_box_aspect([1,1,1])
+            ax.set_xlim(-10,10)
+            ax.set_ylim(-10,10)
+            ax.set_zlim(-10,10)
 
+            st.pyplot(fig)                                
+
+        else:
+
+            if algorithm == "Painter's Algorithm":
+
+                faces = [
+                    [(-1,-1,-1),(1,-1,-1),(1,1,-1),(-1,1,-1)],
+                    [(-1,-1, 1),(1,-1, 1),(1,1, 1),(-1,1, 1)],
+                    [(-1,-1,-1),(-1,1,-1),(-1,1, 1),(-1,-1, 1)],
+                    [(1,-1,-1),(1,-1, 1),(1,1, 1),(1,1,-1)],
+                    [(-1,-1,-1),(-1,-1, 1),(1,-1, 1),(1,-1,-1)],
+                    [(-1,1,-1),(1,1,-1),(1,1, 1),(-1,1, 1)]
+                ]
+
+                # SCALE
+                faces = [[(x*size,y*size,z*size) for (x,y,z) in f] for f in faces]
+
+                # ROTATE
+                faces = [rotate_y(f, angle) for f in faces]
+
+                # SORT (Painter)
+                faces = sorted(
+                    faces,
+                    key=lambda f: sum(v[2] for v in f)/len(f),
+                    reverse=True
+                )
+
+                # DRAW (with color + edge 🔥)
+                colors = ['red','green','blue','yellow','cyan','magenta']
+
+                for i, face in enumerate(faces):
+                    ax.add_collection3d(
+                        Poly3DCollection(
+                            [face],
+                            facecolor=colors[i % 6],
+                            edgecolor='black',
+                            alpha=0.7
+                        )
+                    )
+                # COMMON AXIS (SAFE)
+                ax.set_box_aspect([1,1,1])
+                ax.set_xlim(-10,10)
+                ax.set_ylim(-10,10)
+                ax.set_zlim(-10,10)
+
+                st.pyplot(fig)
+                    
+elif st.session_state.run_z and algorithm == "Z-Buffer":
+
+    W, H = 500, 350
+    img = np.zeros((H, W, 3), dtype=np.float32)
+    zbuf = np.full((H, W), np.inf)
+
+    # ===== USER INPUT =====
+    dist = st.sidebar.slider("Distance", 200, 1000, 600)
+    speed = st.sidebar.slider("Speed", 0.0, 5.0, 1.0)
+
+    if "angle" not in st.session_state:
+        st.session_state.angle = 0
+
+    # ===== OBJECTS =====
+    def cube(s):
+        s /= 2
+        return {
+            "v": np.array([
+                [-s,-s,-s],[s,-s,-s],[s,s,-s],[-s,s,-s],
+                [-s,-s,s],[s,-s,s],[s,s,s],[-s,s,s]
+            ]),
+            "f": [
+                [0,1,2],[0,2,3],[4,5,6],[4,6,7],
+                [0,1,5],[0,5,4],[2,3,7],[2,7,6],
+                [1,2,6],[1,6,5],[0,3,7],[0,7,4]
+            ],
+            "c": np.array([0.2,0.8,1])
+        }
+
+    def pyramid(s):
+        s /= 2
+        return {
+            "v": np.array([
+                [-s,-s,-s],[s,-s,-s],[s,-s,s],[-s,-s,s],[0,s,0]
+            ]),
+            "f": [
+                [0,1,2],[0,2,3],
+                [0,1,4],[1,2,4],[2,3,4],[3,0,4]
+            ],
+            "c": np.array([1,0.5,0.2])
+        }
+
+    # ===== ROTATION =====
+    def rotate(p):
+        a = np.radians(st.session_state.angle)
+        x,y,z = p
+
+        # Y rotation
+        x2 = x*np.cos(a) - z*np.sin(a)
+        z2 = x*np.sin(a) + z*np.cos(a)
+
+        # X rotation (true 3D feel 🔥)
+        y2 = y*np.cos(a/2) - z2*np.sin(a/2)
+        z3 = y*np.sin(a/2) + z2*np.cos(a/2)
+
+        return np.array([x2,y2,z3])
+
+    # ===== PROJECTION (REAL PERSPECTIVE) =====
+    def proj(p):
+        x,y,z = p
+
+        z += dist
+        if z < 1:
+            z = 1
+
+        f = 300 / z   # perspective factor
+
+        return np.array([
+            x*f + W/2,
+            y*f + H/2,
+            z
+        ])
+
+    # ===== DRAW =====
+    def draw_obj(obj, offset):
+        tv = np.array([rotate(v) + np.array([offset,0,0]) for v in obj["v"]])
+
+        for f in obj["f"]:
+            a,b,c = tv[f[0]], tv[f[1]], tv[f[2]]
+
+            n = normal(a,b,c)
+            col = shade(n, obj["c"])
+
+            triangle_zbuffer(
+                img, zbuf,
+                proj(a), proj(b), proj(c),
+                col, W, H
+            )
+
+    # ===== DRAW BOTH =====
+    draw_obj(cube(size*40), -150)
+    draw_obj(pyramid(size*40), 150)
+
+    # ===== UPDATE ROTATION =====
+    st.session_state.angle += speed
+
+    st.image(img.astype(np.uint8), caption="Z-Buffer (True 3D)")
+    
+    time.sleep(0.03)
+    st.rerun()  
+
+      
+            # st.stop()
 st.markdown("---")
 st.caption("Computer Graphics Algorithms Simulator • Fully Interactive Version")
