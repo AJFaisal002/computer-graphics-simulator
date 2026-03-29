@@ -42,6 +42,13 @@ It is suitable for:
 - ✅ Boundary Fill
 - ✅ Flood Fill
 
+### 🔹 2D Transformations
+- ✅ Translation  
+- ✅ Scaling  
+- ✅ Rotation  
+- ✅ Shearing  
+- ✅ Reflection 
+
 ### 🔹 3D Algorithms
 
 - ✅ Back-Face Culling
