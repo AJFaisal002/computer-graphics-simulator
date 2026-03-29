@@ -229,7 +229,8 @@ algorithm = st.sidebar.selectbox(
     ["DDA Line","Bresenham Line","Midpoint Circle",
      "Scan-Line Fill","Boundary Fill","Flood Fill",
      "Back-Face Culling","Painter's Algorithm","Z-Buffer",
-     "Cohen-Sutherland Clipping","Sutherland-Hodgman Clipping"]
+     "Cohen-Sutherland Clipping","Sutherland-Hodgman Clipping",
+     "Translation","Scaling","Rotation","Shearing","Reflection"]  # ← add these 5
 )
 
 # ================= INPUT CONTROLS =================
@@ -332,6 +333,39 @@ elif algorithm in ["Cohen-Sutherland Clipping","Sutherland-Hodgman Clipping"]:
             with col6:
                 vy = st.number_input(f"y{i+1}", value=dvy, key=f"cvy{i}")
             clip_vertices.append((int(vx), int(vy)))
+        
+elif algorithm in ["Translation","Scaling","Rotation","Shearing","Reflection"]:
+    st.sidebar.subheader("Object Vertices")
+    num_tv = st.sidebar.number_input("Number of vertices", 3, 8, 5, key="tv_n")
+    default_obj = [(100,80),(180,80),(180,150),(140,190),(100,150)]
+    t_verts = []
+    for i in range(num_tv):
+        dv = default_obj[i] if i < len(default_obj) else (130,130)
+        col1, col2 = st.sidebar.columns(2)
+        with col1:
+            vx = st.number_input(f"x{i+1}", value=float(dv[0]), key=f"tv_x{i}")
+        with col2:
+            vy = st.number_input(f"y{i+1}", value=float(dv[1]), key=f"tv_y{i}")
+        t_verts.append((float(vx), float(vy)))
+
+    st.sidebar.subheader("Parameters")
+    if algorithm == "Translation":
+        tx = st.sidebar.number_input("tx", value=60.0)
+        ty = st.sidebar.number_input("ty", value=40.0)
+    elif algorithm == "Scaling":
+        px = st.sidebar.number_input("Pivot x", value=140.0)
+        py = st.sidebar.number_input("Pivot y", value=115.0)
+        sx = st.sidebar.number_input("sx", value=1.5)
+        sy = st.sidebar.number_input("sy", value=1.5)
+    elif algorithm == "Rotation":
+        px = st.sidebar.number_input("Pivot x", value=140.0)
+        py = st.sidebar.number_input("Pivot y", value=115.0)
+        theta = st.sidebar.number_input("Angle (degrees)", value=45.0)
+    elif algorithm == "Shearing":
+        shx = st.sidebar.number_input("shx (along X)", value=0.5)
+        shy = st.sidebar.number_input("shy (along Y)", value=0.0)
+    elif algorithm == "Reflection":
+        axis = st.sidebar.selectbox("Reflect about", ["X-axis","Y-axis","Origin","y = x"])
         # ================= Z-BUFFER (FIXED 🔥) =================
 # ================= Z-BUFFER (FIXED 🔥) =================
 if "draw" not in st.session_state:
@@ -415,7 +449,95 @@ if st.session_state.draw and algorithm != "Z-Buffer":
 
         st.pyplot(fig)
 
+    elif algorithm in ["Translation","Scaling","Rotation","Shearing","Reflection"]:
+        import matplotlib.patches as mpatches
+        import matplotlib.path as mpath
 
+        def apply_transform(verts, M):
+            return [(( M @ np.array([x,y,1.0]) )[0], ( M @ np.array([x,y,1.0]) )[1]) for x,y in verts]
+
+        def poly_patch(verts, **kwargs):
+            v = verts + [verts[0]]
+            codes = [mpath.Path.MOVETO] + [mpath.Path.LINETO]*(len(v)-2) + [mpath.Path.CLOSEPOLY]
+            return mpatches.PathPatch(mpath.Path(v, codes), **kwargs)
+
+        if algorithm == "Translation":
+            M = np.array([[1,0,tx],[0,1,ty],[0,0,1]], dtype=float)
+            label = f"Translation  tx={tx}, ty={ty}"
+            t_color, t_edge = "#fce7f3", "#be185d"
+        elif algorithm == "Scaling":
+            T1 = np.array([[1,0,-px],[0,1,-py],[0,0,1]], dtype=float)
+            S  = np.array([[sx,0,0],[0,sy,0],[0,0,1]], dtype=float)
+            T2 = np.array([[1,0,px],[0,1,py],[0,0,1]], dtype=float)
+            M  = T2 @ S @ T1
+            label = f"Scaling  sx={sx}, sy={sy}  pivot=({px},{py})"
+            t_color, t_edge = "#fef9c3", "#ca8a04"
+        elif algorithm == "Rotation":
+            rad = np.radians(theta)
+            c2, s2 = np.cos(rad), np.sin(rad)
+            T1 = np.array([[1,0,-px],[0,1,-py],[0,0,1]], dtype=float)
+            R  = np.array([[c2,-s2,0],[s2,c2,0],[0,0,1]], dtype=float)
+            T2 = np.array([[1,0,px],[0,1,py],[0,0,1]], dtype=float)
+            M  = T2 @ R @ T1
+            label = f"Rotation  θ={theta}°  pivot=({px},{py})"
+            t_color, t_edge = "#dcfce7", "#16a34a"
+        elif algorithm == "Shearing":
+            M = np.array([[1,shx,0],[shy,1,0],[0,0,1]], dtype=float)
+            label = f"Shearing  shx={shx}, shy={shy}"
+            t_color, t_edge = "#fef3c7", "#d97706"
+        elif algorithm == "Reflection":
+            axes_map = {
+                "X-axis": np.array([[1,0,0],[0,-1,0],[0,0,1]], dtype=float),
+                "Y-axis": np.array([[-1,0,0],[0,1,0],[0,0,1]], dtype=float),
+                "Origin": np.array([[-1,0,0],[0,-1,0],[0,0,1]], dtype=float),
+                "y = x":  np.array([[0,1,0],[1,0,0],[0,0,1]], dtype=float),
+            }
+            M = axes_map[axis]
+            label = f"Reflection about {axis}"
+            t_color, t_edge = "#ffe4e6", "#e11d48"
+
+        tv = apply_transform(t_verts, M)
+
+        ax = fig.add_subplot(111)
+        ax.add_patch(poly_patch(t_verts, facecolor="#dbeafe", edgecolor="#1d4ed8",
+                                linewidth=2, linestyle="--", alpha=0.6, label="Original"))
+        ax.add_patch(poly_patch(tv, facecolor=t_color, edgecolor=t_edge,
+                                linewidth=2, alpha=0.8, label="Transformed"))
+
+        for i,(x,y) in enumerate(t_verts):
+            ax.annotate(f"P{i+1}", (x,y), fontsize=8, color="#1d4ed8", ha="center", va="bottom")
+        for i,(x,y) in enumerate(tv):
+            ax.annotate(f"P{i+1}'", (x,y), fontsize=8, color=t_edge, ha="center", va="top")
+
+        if algorithm in ("Scaling","Rotation"):
+            ax.scatter([px],[py], color="red", s=60, zorder=5, label="pivot")
+        if algorithm == "Reflection":
+            all_pts = t_verts + tv
+            xs_r = [p[0] for p in all_pts]; ys_r = [p[1] for p in all_pts]
+            if axis == "X-axis":
+                ax.axhline(0, color="#f59e0b", lw=1.5, linestyle=":")
+            elif axis == "Y-axis":
+                ax.axvline(0, color="#f59e0b", lw=1.5, linestyle=":")
+            elif axis == "Origin":
+                ax.scatter([0],[0], color="#f59e0b", s=80, zorder=5)
+            elif axis == "y = x":
+                lo = min(min(xs_r),min(ys_r))-20; hi = max(max(xs_r),max(ys_r))+20
+                ax.plot([lo,hi],[lo,hi], color="#f59e0b", lw=1.5, linestyle=":")
+
+        all_pts = t_verts + tv
+        xs_a = [p[0] for p in all_pts]; ys_a = [p[1] for p in all_pts]
+        pad = 40
+        ax.set_xlim(min(xs_a)-pad, max(xs_a)+pad)
+        ax.set_ylim(min(ys_a)-pad, max(ys_a)+pad)
+        ax.axhline(0, color="gray", lw=0.5)
+        ax.axvline(0, color="gray", lw=0.5)
+        ax.set_aspect("equal")
+        ax.grid(True, alpha=0.3)
+        ax.legend(fontsize=8)
+        ax.set_title(label)
+        st.pyplot(fig)
+        
+        
     elif algorithm == "Sutherland-Hodgman Clipping":
 
         ax = fig.add_subplot(111)
