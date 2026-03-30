@@ -840,8 +840,8 @@ elif st.session_state.run_z and algorithm == "Z-Buffer":
             )
 
     # ===== DRAW BOTH =====
-    draw_obj(cube(size*40), -150)
-    draw_obj(pyramid(size*40), 150)
+    draw_obj(cube(size*40), -120)
+    draw_obj(pyramid(size*40), 120)
 
     # ===== UPDATE ROTATION =====
     st.session_state.angle += speed
