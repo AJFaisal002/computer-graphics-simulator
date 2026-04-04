@@ -388,7 +388,7 @@ if st.session_state.draw and algorithm == "Z-Buffer":
 if st.session_state.draw and algorithm != "Z-Buffer":
     
 
-    fig = plt.figure(figsize=(6,6))
+    fig = plt.figure(figsize=(4.2, 3.4))
 
     # ================= 2D =================
     if algorithm in ["DDA Line","Bresenham Line","Midpoint Circle",
@@ -447,7 +447,7 @@ if st.session_state.draw and algorithm != "Z-Buffer":
 
                 ax.scatter(fx, fy, s=5)
 
-        st.pyplot(fig)
+        st.pyplot(fig, use_container_width=False)
 
     elif algorithm in ["Translation","Scaling","Rotation","Shearing","Reflection"]:
         import matplotlib.patches as mpatches
@@ -535,7 +535,7 @@ if st.session_state.draw and algorithm != "Z-Buffer":
         ax.grid(True, alpha=0.3)
         ax.legend(fontsize=8)
         ax.set_title(label)
-        st.pyplot(fig)
+        st.pyplot(fig, use_container_width=False)
         
         
     elif algorithm == "Sutherland-Hodgman Clipping":
@@ -569,7 +569,7 @@ if st.session_state.draw and algorithm != "Z-Buffer":
             st.warning("Polygon is completely outside the clip window.")
 
         ax.legend()
-        st.pyplot(fig)
+        st.pyplot(fig, use_container_width=False)
     elif algorithm == "Cohen-Sutherland Clipping":
 
         ax = fig.add_subplot(111)
@@ -633,7 +633,7 @@ if st.session_state.draw and algorithm != "Z-Buffer":
         ax.legend()
 
         # ===== SHOW =====
-        st.pyplot(fig)    
+        st.pyplot(fig, use_container_width=False)
 
     # ================= 3D =================
 # ================= 3D =================
@@ -702,7 +702,7 @@ if st.session_state.draw and algorithm != "Z-Buffer":
             ax.set_ylim(-10,10)
             ax.set_zlim(-10,10)
 
-            st.pyplot(fig)                                
+            st.pyplot(fig, use_container_width=False)    
 
         else:
 
@@ -748,11 +748,11 @@ if st.session_state.draw and algorithm != "Z-Buffer":
                 ax.set_ylim(-10,10)
                 ax.set_zlim(-10,10)
 
-                st.pyplot(fig)
+                st.pyplot(fig, use_container_width=False)
                     
 elif st.session_state.run_z and algorithm == "Z-Buffer":
 
-    W, H = 500, 350
+    W, H = 420, 260
     img = np.zeros((H, W, 3), dtype=np.float32)
     zbuf = np.full((H, W), np.inf)
 
@@ -846,7 +846,7 @@ elif st.session_state.run_z and algorithm == "Z-Buffer":
     # ===== UPDATE ROTATION =====
     st.session_state.angle += speed
 
-    st.image(img.astype(np.uint8), caption="Z-Buffer (True 3D)")
+    st.image(img.astype(np.uint8), caption="Z-Buffer (True 3D)", width=420)
     
     time.sleep(0.03)
     st.rerun()  
